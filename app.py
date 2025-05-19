@@ -80,3 +80,49 @@ with tab1:
             st.info("Aucun service enregistré cette semaine.")
     else:
         st.info("✅ Aucune semaine avec résistance au-dessus du seuil.")
+
+# === Onglet 2 ===
+with tab2:
+    st.header("🧪 Autres Antibiotiques - Staph aureus")
+    week_col = "Week"
+    df_other = df_other[df_other[week_col].apply(lambda x: str(x).isdigit())]
+    df_other[week_col] = df_other[week_col].astype(int)
+    ab_cols = [col for col in df_other.columns if col.startswith('%')]
+
+    selected_ab = st.selectbox("Sélectionner un antibiotique", ab_cols, key="ab_other")
+    min_week, max_week = df_other[week_col].min(), df_other[week_col].max()
+    week_range = st.slider("Plage de semaines", min_week, max_week, (min_week, max_week), key="range_ab_other")
+
+    df_filtered = df_other[(df_other[week_col] >= week_range[0]) & (df_other[week_col] <= week_range[1])]
+    values = pd.to_numeric(df_filtered[selected_ab], errors='coerce').dropna()
+    q1, q3 = np.percentile(values, [25, 75])
+    iqr = q3 - q1
+    lower, upper = max(q1 - 1.5 * iqr, 0), q3 + 1.5 * iqr
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df_filtered[week_col], y=df_filtered[selected_ab], mode='lines+markers', name=selected_ab))
+    fig.add_trace(go.Scatter(x=df_filtered[week_col], y=[upper]*len(df_filtered), mode='lines', name="Seuil haut", line=dict(dash='dash')))
+    fig.add_trace(go.Scatter(x=df_filtered[week_col], y=[lower]*len(df_filtered), mode='lines', name="Seuil bas", line=dict(dash='dot')))
+    fig.update_layout(yaxis=dict(range=[0, 30]), xaxis_title="Semaine", yaxis_title="Résistance (%)")
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("### 🧾 Résumé")
+    st.write(f"🔢 Nombre de semaines analysées : {df_filtered[selected_ab].count()}")
+    st.write(f"📊 Moyenne de résistance : {df_filtered[selected_ab].mean():.2f} %")
+    st.write(f"💥 Semaine avec le pic de résistance : Semaine {df_filtered.loc[df_filtered[selected_ab].idxmax(), week_col]}")
+
+    st.markdown("### 🚨 Semaines avec alerte de résistance")
+    alert_df = df_filtered[df_filtered[selected_ab] > upper]
+    if not alert_df.empty:
+        alert_weeks = sorted(alert_df[week_col].unique())
+        selected_alert_week = st.selectbox("📆 Choisir une semaine d'alerte :", alert_weeks, key="alert_other")
+
+        services = df_service[df_service['Week'] == selected_alert_week]['LIBELLE_DEMANDEUR'].dropna().unique()
+        if len(services) > 0:
+            st.markdown(f"### 🏥 Services concernés en semaine {selected_alert_week} :")
+            for s in services:
+                st.write(f"🔸 {s}")
+        else:
+            st.info("Aucun service enregistré cette semaine.")
+    else:
+        st.info("✅ Aucune semaine avec résistance au-dessus du seuil.")
