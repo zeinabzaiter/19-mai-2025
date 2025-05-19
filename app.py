@@ -126,3 +126,104 @@ with tab2:
             st.info("Aucun service enregistré cette semaine.")
     else:
         st.info("✅ Aucune semaine avec résistance au-dessus du seuil.")
+...
+# === Onglet 3 ===
+with tab3:
+    st.header("🧬 Phénotypes - Staph aureus")
+
+    # Préparation des données
+    df_pheno["week"] = pd.to_datetime(df_pheno["week"], errors="coerce")
+    df_pheno = df_pheno.dropna(subset=["week"])
+    df_pheno["WeekDate"] = df_pheno["week"].dt.date
+    phenos = ["MRSA", "Other", "VRSA", "Wild"]
+    df_pheno["Total"] = df_pheno[phenos].sum(axis=1)
+    for pheno in phenos:
+        df_pheno[f"% {pheno}"] = (df_pheno[pheno] / df_pheno["Total"]) * 100
+
+    selected_pheno = st.selectbox("Sélectionner un phénotype", phenos)
+    min_date, max_date = df_pheno["WeekDate"].min(), df_pheno["WeekDate"].max()
+    date_range = st.slider("Plage de semaines", min_date, max_date, (min_date, max_date))
+
+    filtered_pheno = df_pheno[(df_pheno["WeekDate"] >= date_range[0]) & (df_pheno["WeekDate"] <= date_range[1])]
+    pct_col = f"% {selected_pheno}"
+    values = filtered_pheno[pct_col].dropna()
+    q1, q3 = np.percentile(values, [25, 75])
+    iqr = q3 - q1
+    lower, upper = max(q1 - 1.5 * iqr, 0), q3 + 1.5 * iqr
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=filtered_pheno["WeekDate"], y=filtered_pheno[pct_col],
+                             mode='lines+markers', name=pct_col))
+    fig.add_trace(go.Scatter(x=filtered_pheno["WeekDate"], y=[upper]*len(filtered_pheno),
+                             mode='lines', name="Seuil haut", line=dict(dash='dash')))
+    fig.add_trace(go.Scatter(x=filtered_pheno["WeekDate"], y=[lower]*len(filtered_pheno),
+                             mode='lines', name="Seuil bas", line=dict(dash='dot')))
+    fig.update_layout(yaxis=dict(range=[0, 100]), xaxis_title="Semaine", yaxis_title="Résistance (%)")
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("### 🧾 Résumé")
+    st.write(f"🔢 Nombre de semaines analysées : {filtered_pheno[pct_col].count()}")
+    st.write(f"📊 Moyenne de {selected_pheno} : {filtered_pheno[pct_col].mean():.2f} %")
+    st.write(f"💥 Semaine avec le pic de {selected_pheno} : {filtered_pheno.loc[filtered_pheno[pct_col].idxmax(), 'WeekDate']}")
+
+    st.markdown("### 🚨 Semaines avec alerte de phénotype")
+    alert_df = filtered_pheno[filtered_pheno[pct_col] > upper]
+    if not alert_df.empty:
+        alert_weeks = sorted(alert_df["week"].dt.isocalendar().week.unique())
+        selected_alert_week = st.selectbox("📆 Choisir une semaine d'alerte :", alert_weeks, key="alert_pheno")
+
+        services = df_service[df_service['Week'] == selected_alert_week]['LIBELLE_DEMANDEUR'].dropna().unique()
+        if len(services) > 0:
+            st.markdown(f"### 🏥 Services concernés en semaine {selected_alert_week} :")
+            for s in services:
+                st.write(f"🔸 {s}")
+        else:
+            st.info("Aucun service enregistré cette semaine.")
+    else:
+        st.info(f"✅ Aucune semaine avec pic de {selected_pheno} au-dessus du seuil.")
+...
+# === Onglet 4 ===
+with tab4:
+    st.header("🧫 Détail des bactéries à étudier")
+
+    search = st.text_input("🔍 Rechercher une bactérie :", "")
+    filtered_df = df_bact[df_bact["Category"].str.contains(search, case=False, na=False)]
+
+    st.subheader("📋 Liste des bactéries")
+    st.dataframe(filtered_df[["Category", "Key Antibiotics"]])
+
+    if not filtered_df.empty:
+        selected = st.selectbox("📌 Sélectionner une bactérie :", filtered_df["Category"].unique())
+        details = df_bact[df_bact["Category"] == selected].iloc[0]
+
+        st.markdown(f"## 🧬 Détails : {selected}")
+
+        st.write("**🔑 Key Antibiotics**")
+        st.write(details["Key Antibiotics"])
+
+        st.write("**💊 Other Antibiotics**")
+        st.write(details["Other Antibiotics"])
+
+        st.write("**🧬 Phénotype**")
+        st.write(details["Phenotype"])
+    else:
+        st.info("Aucune bactérie ne correspond à votre recherche.")
+...
+# === Onglet 5 ===
+with tab5:
+    st.header("⚠️ Alertes par service")
+
+    # Liste unique des semaines disponibles
+    unique_weeks = sorted(df_service['Week'].dropna().unique().astype(int))
+    selected_week = st.selectbox("📆 Choisir une semaine :", unique_weeks)
+
+    # Extraire les services de la semaine sélectionnée
+    services_week = df_service[df_service['Week'] == selected_week]['LIBELLE_DEMANDEUR'].dropna().unique()
+
+    st.markdown(f"### 🏥 Services ayant généré des analyses en semaine {selected_week}")
+
+    if len(services_week) > 0:
+        for s in services_week:
+            st.write(f"🔹 {s}")
+    else:
+        st.info("Aucun service enregistré cette semaine.")
